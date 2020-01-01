@@ -312,7 +312,7 @@ impl<T: Data + 'static> AppState<T> {
     /// A helper fn for setting up the `DelegateCtx`. Takes a closure with
     /// an arbitrary return type `R`, and returns `Some(R)` if an `AppDelegate`
     /// is configured.
-    fn with_delegate<R, F>(&mut self, id: WindowId, f: F) -> Option<R>
+    fn with_delegate<R, F>(&mut self, id: WindowId, win_ctx: &mut dyn WinCtx, f: F) -> Option<R>
     where
         F: FnOnce(&mut Box<dyn AppDelegate<T>>, &mut T, &Env, &mut DelegateCtx) -> R,
     {
@@ -326,6 +326,7 @@ impl<T: Data + 'static> AppState<T> {
         let mut ctx = DelegateCtx {
             source_id: id,
             command_queue,
+            win_ctx,
         };
         if let Some(delegate) = delegate {
             Some(f(delegate, data, env, &mut ctx))
@@ -334,9 +335,9 @@ impl<T: Data + 'static> AppState<T> {
         }
     }
 
-    fn delegate_event(&mut self, id: WindowId, event: Event) -> Option<Event> {
+    fn delegate_event(&mut self, id: WindowId, event: Event, win_ctx: &mut dyn WinCtx) -> Option<Event> {
         if self.delegate.is_some() {
-            self.with_delegate(id, |del, data, env, ctx| del.event(event, data, env, ctx))
+            self.with_delegate(id, win_ctx, |del, data, env, ctx| del.event(event, data, env, ctx))
                 .unwrap()
         } else {
             Some(event)
@@ -345,9 +346,9 @@ impl<T: Data + 'static> AppState<T> {
 
     fn connect(&mut self, id: WindowId, handle: WindowHandle) {
         self.windows.connect(id, handle);
-        self.with_delegate(id, |del, data, env, ctx| {
-            del.window_added(id, data, env, ctx)
-        });
+        // self.with_delegate(id, |del, data, env, ctx| {
+        //     del.window_added(id, data, env, ctx)
+        // });
     }
 
     pub(crate) fn add_window(&mut self, id: WindowId, window: Window<T>) {
@@ -357,8 +358,8 @@ impl<T: Data + 'static> AppState<T> {
     /// Called after this window has been closed by the platform.
     ///
     /// We clean up resources and notifiy the delegate, if necessary.
-    fn remove_window(&mut self, window_id: WindowId, _ctx: &mut dyn WinCtx) {
-        self.with_delegate(window_id, |del, data, env, ctx| {
+    fn remove_window(&mut self, window_id: WindowId, win_ctx: &mut dyn WinCtx) {
+        self.with_delegate(window_id, win_ctx, |del, data, env, ctx| {
             del.window_removed(window_id, data, env, ctx)
         });
         self.windows.remove(window_id);
@@ -399,7 +400,7 @@ impl<T: Data + 'static> AppState<T> {
     }
 
     fn do_event(&mut self, source_id: WindowId, event: Event, win_ctx: &mut dyn WinCtx) -> bool {
-        let event = self.delegate_event(source_id, event);
+        let event = self.delegate_event(source_id, event, win_ctx);
 
         let (is_handled, dirty, anim) = if let Some(event) = event {
             // handle system window-level commands

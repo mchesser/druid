@@ -19,12 +19,13 @@ use std::collections::VecDeque;
 use crate::{Command, Data, Env, Event, WindowId};
 
 /// A context passed in to [`AppDelegate`] functions.
-pub struct DelegateCtx<'a> {
+pub struct DelegateCtx<'a, 'b> {
     pub(crate) source_id: WindowId,
     pub(crate) command_queue: &'a mut VecDeque<(WindowId, Command)>,
+    pub(crate) win_ctx: &'a mut dyn druid_shell::WinCtx<'b>,
 }
 
-impl<'a> DelegateCtx<'a> {
+impl<'a, 'b> DelegateCtx<'a, 'b> {
     /// Submit a [`Command`] to be run after this event is handled.
     ///
     /// Commands are run in the order they are submitted; all commands
@@ -36,6 +37,14 @@ impl<'a> DelegateCtx<'a> {
     pub fn submit_command(&mut self, command: Command, window_id: impl Into<Option<WindowId>>) {
         let window_id = window_id.into().unwrap_or(self.source_id);
         self.command_queue.push_back((window_id, command))
+    }
+
+    pub fn request_timer(&mut self, deadline: std::time::Instant) -> druid_shell::TimerToken {
+        self.win_ctx.request_timer(deadline)
+    }
+
+    pub fn invalidate(&mut self) {
+        self.win_ctx.invalidate()
     }
 }
 
