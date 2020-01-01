@@ -22,10 +22,17 @@ use crate::{
     BoxConstraints, Data, Env, Event, EventCtx, LayoutCtx, PaintCtx, UpdateCtx, Widget, WidgetPod,
 };
 
+#[derive(Copy, Clone)]
+enum Orientation {
+    Horizontal,
+    Vertical,
+}
+
 /// A list widget for a variable-size collection of items.
 pub struct List<T: Data> {
     closure: Box<dyn Fn() -> Box<dyn Widget<T>>>,
     children: Vec<WidgetPod<T, Box<dyn Widget<T>>>>,
+    orientation: Orientation,
 }
 
 impl<T: Data> List<T> {
@@ -35,7 +42,14 @@ impl<T: Data> List<T> {
         List {
             closure: Box::new(move || Box::new(closure())),
             children: Vec::new(),
+            orientation: Orientation::Vertical,
         }
+    }
+
+    /// Sets orientation to horizontal
+    pub fn horizontal(mut self) -> Self {
+        self.orientation = Orientation::Horizontal;
+        self
     }
 }
 
@@ -164,29 +178,58 @@ impl<C: Data, T: ListIter<C>> Widget<T> for List<C> {
         data: &T,
         env: &Env,
     ) -> Size {
-        let mut width = bc.min().width;
-        let mut y = 0.0;
+        match self.orientation {
+            Orientation::Vertical => {
+                let mut width = bc.min().width;
+                let mut y = 0.0;
 
-        let mut children = self.children.iter_mut();
-        data.for_each(|child_data, _| {
-            let child = match children.next() {
-                Some(child) => child,
-                None => {
-                    return;
-                }
-            };
-            let child_bc = BoxConstraints::new(
-                Size::new(bc.min().width, 0.0),
-                Size::new(bc.max().width, std::f64::INFINITY),
-            );
-            let child_size = child.layout(layout_ctx, &child_bc, child_data, env);
-            let rect = Rect::from_origin_size(Point::new(0.0, y), child_size);
-            child.set_layout_rect(rect);
-            width = width.max(child_size.width);
-            y += child_size.height;
-        });
+                let mut children = self.children.iter_mut();
+                data.for_each(|child_data, _| {
+                    let child = match children.next() {
+                        Some(child) => child,
+                        None => {
+                            return;
+                        }
+                    };
+                    let child_bc = BoxConstraints::new(
+                        Size::new(bc.min().width, 0.0),
+                        Size::new(bc.max().width, std::f64::INFINITY),
+                    );
+                    let child_size = child.layout(layout_ctx, &child_bc, child_data, env);
+                    let rect = Rect::from_origin_size(Point::new(0.0, y), child_size);
+                    child.set_layout_rect(rect);
+                    width = width.max(child_size.width);
+                    y += child_size.height;
+                });
 
-        bc.constrain(Size::new(width, y))
+                bc.constrain(Size::new(width, y))
+            }
+            Orientation::Horizontal => {
+                let mut height = bc.min().height;
+                let mut x = 0.0;
+
+                let mut children = self.children.iter_mut();
+                data.for_each(|child_data, _| {
+                    let child = match children.next() {
+                        Some(child) => child,
+                        None => {
+                            return;
+                        }
+                    };
+                    let child_bc = BoxConstraints::new(
+                        Size::new(0.0, bc.min().height),
+                        Size::new(std::f64::INFINITY, bc.max().height),
+                    );
+                    let child_size = child.layout(layout_ctx, &child_bc, child_data, env);
+                    let rect = Rect::from_origin_size(Point::new(x, 0.0), child_size);
+                    child.set_layout_rect(rect);
+                    height = height.max(child_size.height);
+                    x += child_size.width;
+                });
+
+                bc.constrain(Size::new(x, height))
+            }
+        }
     }
 
     fn paint(&mut self, paint_ctx: &mut PaintCtx, data: &T, env: &Env) {
